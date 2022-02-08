@@ -2,9 +2,14 @@
 // programming language and basic operations on tokens (printing, predicates).
 package token
 
+import (
+	"fmt"
+)
+
 // Token is the set of lexical tokens of lua programming language.
 type Token int
 
+// constant values for token of lua programming language.
 const (
 	// Special tokens
 	ILLEGAL Token = iota
@@ -94,6 +99,17 @@ const (
 
 var tokens = []string{
 	ADD:      "+",
+	SUB:      "-",
+	MUL:      "*",
+	DIV:      "/",
+	FLOOR:    "//",
+	MOD:      "%",
+	EXP:      "^",
+	AND1:     "&",
+	OR1:      "|",
+	XOR:      "~",
+	SHR:      ">>",
+	SHL:      "<<",
 	AND:      "and",
 	BREAK:    "break",
 	DO:       "do",
@@ -124,5 +140,12 @@ func init() {
 	keywords = make(map[string]Token)
 	for i := keyword_beg + 1; i < keyword_end; i++ {
 		keywords[tokens[i]] = i
+	}
+}
+
+// PrintKeywords print lua keywords to terminal.
+func PrintKeywords() {
+	for _, v := range keywords {
+		fmt.Println(v)
 	}
 }
