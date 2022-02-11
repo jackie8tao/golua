@@ -30,6 +30,7 @@ func New(file string) (*Scanner, error) {
 		ch:   0,
 	}, nil
 }
+
 func (s *Scanner) GetIdentifier() string {
 	str := ""
 	for _, v := range s.buf[:s.size] {
@@ -47,12 +48,59 @@ func (s *Scanner) Scan() (t token.Token, err error) {
 
 	for {
 		switch s.ch {
-		case '+':
-			t = token.ADD
+		case '+', '-', '*', '%', '^', '#', '&', '|', '(', ')', '[', ']', '{', '}', ',', ';':
+			t, err = token.LookupOperator(string(s.ch))
 			return
-		case '-':
-			t = token.SUB
+		case '/': // maybe '/' or '//'
+			if err = s.next(); err != nil {
+				return
+			}
+
+			if s.ch == '/' {
+				t = token.FLOOR
+			} else {
+				t = token.DIV
+			}
 			return
+		case '<': // maybe '<=' or '<<' or '<'
+			if err = s.next(); err != nil {
+				return
+			}
+			switch s.ch {
+			case '<':
+				t = token.BT_SHL
+			case '=':
+				t = token.LEQ
+			default:
+				t = token.LT
+			}
+			return
+		case '>': // maybe '>=' or '>>' or '>'
+			if err = s.next(); err != nil {
+				return
+			}
+			switch s.ch {
+			case '=':
+				t = token.GEQ
+			case '>':
+				t = token.BT_SHR
+			default:
+				t = token.GT
+			}
+			return
+		case '=': // maybe '=' or '=='
+			if err = s.next(); err != nil {
+				return
+			}
+			if s.ch == '=' {
+				t = token.EQ
+			} else {
+				t = token.ASSIGN
+			}
+			return
+		case '~': // maybe '~' or '~='
+		case ':': // maybe ':' or '::'
+		case '.': // maybe '.' or '..' or '...'
 		default:
 		}
 	}

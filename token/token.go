@@ -35,11 +35,11 @@ const (
 	EXP   // ^
 
 	// bitwise operators
-	AND1 // &
-	OR1  // |
-	XOR  // ~
-	SHR  // >>
-	SHL  // <<
+	BT_AND // &
+	BT_OR  // |
+	BT_XOR // ~
+	BT_SHR // >>
+	BT_SHL // <<
 
 	// relational operators
 	EQ  // ==
@@ -53,14 +53,17 @@ const (
 	CONCAT // ..
 
 	// length operators
-	LEN // #
+	LENGTH // #
+
+	// assignment operators
+	ASSIGN // =
 
 	// delimiters
 	LPAREN    // (
-	RPAREN    // )
 	LBRACK    // [
-	RBRACK    // ]
 	LBRACE    // {
+	RPAREN    // )
+	RBRACK    // ]
 	RBRACE    // }
 	COLON     // :
 	DBCOLON   // ::
@@ -97,50 +100,98 @@ const (
 	keyword_end
 )
 
+// all reversed keywords and symbols of lua5.4
 var tokens = []string{
-	ADD:      "+",
-	SUB:      "-",
-	MUL:      "*",
-	DIV:      "/",
-	FLOOR:    "//",
-	MOD:      "%",
-	EXP:      "^",
-	AND1:     "&",
-	OR1:      "|",
-	XOR:      "~",
-	SHR:      ">>",
-	SHL:      "<<",
-	AND:      "and",
-	BREAK:    "break",
-	DO:       "do",
-	ELSE:     "else",
-	ELSEIF:   "elseif",
-	END:      "end",
-	FALSE:    "false",
-	FOR:      "for",
-	FUNCTION: "function",
-	GOTO:     "goto",
-	IF:       "if",
-	IN:       "in",
-	LOCAL:    "local",
-	NIL:      "nil",
-	NOT:      "not",
-	OR:       "or",
-	REPEAT:   "repeat",
-	RETURN:   "return",
-	THEN:     "then",
-	TRUE:     "true",
-	UNTIL:    "until",
-	WHILE:    "while",
+	ADD:       "+",
+	SUB:       "-",
+	MUL:       "*",
+	DIV:       "/",
+	FLOOR:     "//",
+	MOD:       "%",
+	EXP:       "^",
+	BT_AND:    "&",
+	BT_OR:     "|",
+	BT_XOR:    "~",
+	BT_SHR:    ">>",
+	BT_SHL:    "<<",
+	AND:       "and",
+	OR:        "or",
+	NOT:       "not",
+	BREAK:     "break",
+	DO:        "do",
+	ELSE:      "else",
+	ELSEIF:    "elseif",
+	END:       "end",
+	FALSE:     "false",
+	FOR:       "for",
+	FUNCTION:  "function",
+	GOTO:      "goto",
+	IF:        "if",
+	IN:        "in",
+	LOCAL:     "local",
+	NIL:       "nil",
+	REPEAT:    "repeat",
+	RETURN:    "return",
+	THEN:      "then",
+	TRUE:      "true",
+	UNTIL:     "until",
+	WHILE:     "while",
+	LPAREN:    "(",
+	LBRACK:    "[",
+	LBRACE:    "{",
+	RPAREN:    ")",
+	RBRACK:    "]",
+	RBRACE:    "}",
+	COLON:     ":",
+	DBCOLON:   "::",
+	DOT:       ".",
+	CONCAT:    "..",
+	DOTS:      "...",
+	COMMA:     ",",
+	SEMICOLON: ";",
+	ASSIGN:    "=",
 }
 
-var keywords map[string]Token
+// keywords and operators of lua5.4
+// used to simplify the recognization of tokens.
+var (
+	keywords  = make(map[string]Token)
+	operators = make(map[string]Token)
+)
 
 func init() {
-	keywords = make(map[string]Token)
+	initKeywords()
+	initOperators()
+}
+
+func initKeywords() {
 	for i := keyword_beg + 1; i < keyword_end; i++ {
 		keywords[tokens[i]] = i
 	}
+}
+
+func initOperators() {
+	for i := operator_beg + 1; i < operator_end; i++ {
+		operators[tokens[i]] = i
+	}
+}
+
+// LookupOperator lookup operator token from operators table.
+func LookupOperator(key string) (Token, error) {
+	val, ok := operators[key]
+	if !ok {
+		return 0, ErrOperator
+	}
+	return val, nil
+}
+
+// LookupKeyword lookup keyword token from keywords table.
+func LookupKeyword(key string) (Token, error) {
+	val, ok := keywords[key]
+	if ok {
+		return 0, ErrKeyword
+	}
+	return val, nil
 }
 
 // PrintKeywords print lua keywords to terminal.
