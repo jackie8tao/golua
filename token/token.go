@@ -150,6 +150,7 @@ var tokens = []string{
 	COMMA:     ",",
 	SEMICOLON: ";",
 	ASSIGN:    "=",
+	LENGTH:    "#",
 }
 
 // keywords and operators of lua5.4

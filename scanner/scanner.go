@@ -11,10 +11,15 @@ import (
 const bufSize = 512
 
 type Scanner struct {
+	err  error
 	rd   *bufio.Reader
 	buf  []rune
 	size int
 	ch   rune
+}
+
+func isAlpha(ch rune) bool {
+	return false
 }
 
 func New(file string) (*Scanner, error) {
@@ -41,31 +46,30 @@ func (s *Scanner) GetIdentifier() string {
 }
 
 func (s *Scanner) Scan() (t token.Token, err error) {
-	err = s.next()
-	if err != nil {
-		return
+	s.next()
+	if s.hasErr() {
+		return 0, s.err
 	}
 
 	for {
+		if s.hasErr() {
+			return 0, s.err
+		}
+
 		switch s.ch {
 		case '+', '-', '*', '%', '^', '#', '&', '|', '(', ')', '[', ']', '{', '}', ',', ';':
 			t, err = token.LookupOperator(string(s.ch))
 			return
 		case '/': // maybe '/' or '//'
-			if err = s.next(); err != nil {
-				return
-			}
-
+			s.next()
 			if s.ch == '/' {
 				t = token.FLOOR
-			} else {
-				t = token.DIV
-			}
-			return
-		case '<': // maybe '<=' or '<<' or '<'
-			if err = s.next(); err != nil {
 				return
 			}
+			t = token.DIV
+			return
+		case '<': // maybe '<=' or '<<' or '<'
+			s.next()
 			switch s.ch {
 			case '<':
 				t = token.BT_SHL
@@ -76,9 +80,7 @@ func (s *Scanner) Scan() (t token.Token, err error) {
 			}
 			return
 		case '>': // maybe '>=' or '>>' or '>'
-			if err = s.next(); err != nil {
-				return
-			}
+			s.next()
 			switch s.ch {
 			case '=':
 				t = token.GEQ
@@ -89,21 +91,54 @@ func (s *Scanner) Scan() (t token.Token, err error) {
 			}
 			return
 		case '=': // maybe '=' or '=='
-			if err = s.next(); err != nil {
-				return
-			}
+			s.next()
 			if s.ch == '=' {
 				t = token.EQ
-			} else {
-				t = token.ASSIGN
+				return
 			}
+			t = token.ASSIGN
 			return
 		case '~': // maybe '~' or '~='
+			s.next()
+			if s.ch == '=' {
+				t = token.NEQ
+				return
+			}
+			t = token.BT_XOR
+			return
 		case ':': // maybe ':' or '::'
+			s.next()
+			if s.ch == ':' {
+				t = token.DBCOLON
+				return
+			}
+			t = token.COLON
+			return
 		case '.': // maybe '.' or '..' or '...'
+			s.next()
+			if s.ch != '.' {
+				t = token.DOT
+				return
+			}
+			s.next()
+			if s.ch != '.' {
+				t = token.CONCAT
+				return
+			}
+			t = token.DOTS
+			return
+		case '0', '1', '2', '3', '4', '5', '6', '7', '8', '9':
+
 		default:
+			if isAlpha(s.ch) {
+				return
+			}
 		}
 	}
+}
+
+func (s *Scanner) hasErr() bool {
+	return s.err != nil
 }
 
 func (s *Scanner) resetBuf() {
@@ -111,12 +146,12 @@ func (s *Scanner) resetBuf() {
 	s.size = 0
 }
 
-func (s *Scanner) next() error {
+func (s *Scanner) next() {
 	ch, _, err := s.rd.ReadRune()
 	if err != nil {
-		return err
+		s.err = err
+		return
 	}
-
 	s.ch = ch
-	return nil
+	return
 }
