@@ -1,5 +1,7 @@
 package lexer
 
+import "fmt"
+
 type TokenType int
 
 const (
@@ -102,4 +104,21 @@ var tokenNames = map[TokenType]string{
 
 func (t TokenType) String() string {
 	return tokenNames[t]
+}
+
+type Position struct {
+	Source string
+	Line   int
+	Column int
+}
+
+type Token struct {
+	Type TokenType
+	Name string
+	Str  string
+	Pos  Position
+}
+
+func (t *Token) String() string {
+	return fmt.Sprintf("<type:%v, str:%v>", t.Name, t.Str)
 }
