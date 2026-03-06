@@ -1,0 +1,105 @@
+package lexer
+
+type TokenType int
+
+const (
+	TokenEof TokenType = iota
+	TokenIdentifier
+	TokenAnd       // and
+	TokenBreak     // break
+	TokenDo        // do
+	TokenElse      // else
+	TokenElseif    // elseif
+	TokenEnd       // end
+	TokenFalse     // false
+	TokenFor       // for
+	TokenFunction  // function
+	TokenIf        // if
+	TokenIn        // in
+	TokenLocal     // local
+	TokenNil       // nil
+	TokenNot       // not
+	TokenOr        // or
+	TokenRepeat    // repeat
+	TokenReturn    // return
+	TokenThen      // then
+	TokenTrue      // true
+	TokenUntil     // until
+	TokenWhile     // while
+	TokenAdd       // +
+	TokenMinus     // -
+	TokenMultiply  // *
+	TokenDivide    // /
+	TokenXor       // ^
+	TokenAssign    // =
+	TokenNeq       // ~=
+	TokenLeq       // <=
+	TokenGeq       // >=
+	TokenLt        // <
+	TokenGt        // >
+	TokenEq        // ==
+	TokenLparen    // (
+	TokenRparen    // )
+	TokenLbracket  // [
+	TokenRbracket  // ]
+	TokenLbrace    // {
+	TokenRbrace    // }
+	TokenSemicolon // ;
+	TokenComma     // ,
+	TokenColon     // :
+	TokenDot       // .
+	TokenDotDot    // ..
+	TokenDots      // ...
+)
+
+var tokenNames = map[TokenType]string{
+	TokenAnd:       "and",
+	TokenBreak:     "break",
+	TokenDo:        "do",
+	TokenElse:      "else",
+	TokenElseif:    "elseif",
+	TokenEnd:       "end",
+	TokenFalse:     "false",
+	TokenFor:       "for",
+	TokenFunction:  "function",
+	TokenIf:        "if",
+	TokenIn:        "in",
+	TokenLocal:     "local",
+	TokenNil:       "nil",
+	TokenNot:       "not",
+	TokenOr:        "or",
+	TokenRepeat:    "repeat",
+	TokenReturn:    "return",
+	TokenThen:      "then",
+	TokenTrue:      "true",
+	TokenUntil:     "until",
+	TokenWhile:     "while",
+	TokenAdd:       "+",
+	TokenMinus:     "-",
+	TokenMultiply:  "*",
+	TokenDivide:    "/",
+	TokenXor:       "^",
+	TokenAssign:    "=",
+	TokenNeq:       "~=",
+	TokenLeq:       "<=",
+	TokenGeq:       ">=",
+	TokenLt:        "<",
+	TokenGt:        ">",
+	TokenEq:        "==",
+	TokenLparen:    "(",
+	TokenRparen:    ")",
+	TokenLbracket:  "[",
+	TokenRbracket:  "]",
+	TokenLbrace:    "{",
+	TokenRbrace:    "}",
+	TokenSemicolon: ";",
+	TokenComma:     ",",
+	TokenColon:     ":",
+	TokenDot:       ".",
+	TokenDotDot:    "..",
+	TokenDots:      "...",
+}
+
+func (t TokenType) String() string {
+	return tokenNames[t]
+}
