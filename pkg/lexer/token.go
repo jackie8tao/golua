@@ -7,6 +7,8 @@ type TokenType int
 const (
 	TokenEOF TokenType = iota
 	TokenIdentifier
+	TokenNumber
+	TokenString
 	TokenAnd       // and
 	TokenBreak     // break
 	TokenDo        // do
@@ -84,9 +86,38 @@ var reservedWords = map[string]TokenType{
 	"while":    TokenWhile,
 }
 
+var operators = map[string]TokenType{
+	"+":   TokenAdd,
+	"-":   TokenMinus,
+	"*":   TokenMultiply,
+	"/":   TokenDivide,
+	"^":   TokenXor,
+	"=":   TokenAssign,
+	"~=":  TokenNeq,
+	"<=":  TokenLeq,
+	">=":  TokenGeq,
+	"<":   TokenLt,
+	">":   TokenGt,
+	"==":  TokenEq,
+	"(":   TokenLparen,
+	")":   TokenRparen,
+	"[":   TokenLbracket,
+	"]":   TokenRbracket,
+	"{":   TokenLbrace,
+	"}":   TokenRbrace,
+	";":   TokenSemicolon,
+	",":   TokenComma,
+	":":   TokenColon,
+	".":   TokenDot,
+	"..":  TokenDotDot,
+	"...": TokenDots,
+}
+
 var tokenNames = map[TokenType]string{
 	TokenEOF:        "TK_EOF",
 	TokenIdentifier: "TK_IDENTIFIER",
+	TokenNumber:     "TK_NUMBER",
+	TokenString:     "TK_STRING",
 	TokenAnd:        "TK_AND",
 	TokenBreak:      "TK_BREAK",
 	TokenDo:         "TK_DO",
