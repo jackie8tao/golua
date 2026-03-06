@@ -8,7 +8,7 @@ import (
 	"strconv"
 )
 
-const EOF = -1
+const runeEOF = -1
 
 type Error struct {
 	Pos     Position
@@ -17,7 +17,7 @@ type Error struct {
 
 func (e *Error) Error() string {
 	pos := e.Pos
-	if pos.Line == EOF {
+	if pos.Line == runeEOF {
 		return fmt.Sprintf("%v at EOF:   %s\n", pos.Source, e.Message)
 	}
 	return fmt.Sprintf(
@@ -53,36 +53,51 @@ func (l *Lexer) newError(msg string) *Error {
 	}
 }
 
-func (l *Lexer) next() rune {
+func (l *Lexer) readNext() rune {
 	ch, _, err := l.reader.ReadRune()
-	if err != nil {
-		if err == io.EOF {
-			return EOF
-		}
-		panic(fmt.Sprintf("unexpected error: %v", err))
+	if err == io.EOF {
+		return runeEOF
 	}
-	l.Pos.Column++
+	return ch
+}
+
+func (l *Lexer) newline(ch rune) {
+	if ch < 0 {
+		return
+	}
+	l.Pos.Line++
+	l.Pos.Column = 0
+	next := l.peek()
+	if (ch == '\n' && next == '\r') || (ch == '\r' && next == '\n') {
+		_, _, _ = l.reader.ReadRune()
+	}
+}
+
+func (l *Lexer) next() rune {
+	ch := l.readNext()
+	switch ch {
+	case '\n', '\r':
+		l.newline(ch)
+		ch = '\n'
+	case runeEOF:
+		l.Pos.Line = runeEOF
+		l.Pos.Column = 0
+	default:
+		l.Pos.Column++
+	}
 	return ch
 }
 
 func (l *Lexer) peek() rune {
-	ch := l.next()
-	if ch == EOF {
-		return EOF
-	}
-	err := l.reader.UnreadRune()
-	if err != nil {
-		panic(fmt.Sprintf("unexpected error: %v", err))
+	ch := l.readNext()
+	if ch != runeEOF {
+		_ = l.reader.UnreadRune()
 	}
 	return ch
 }
 
 func (l *Lexer) scanNewline() {
-	oldCh := l.next()
-	if oldCh == '\n' || oldCh == '\r' {
-		l.Pos.Line++
-		l.Pos.Column = 0
-	}
+	oldCh := l.next() // \n or \r
 
 	// windows \r\n or \n\r
 	newCh := l.peek()
@@ -198,18 +213,19 @@ func (l *Lexer) scanString(buf *bytes.Buffer) error {
 	quote := l.next()
 	for {
 		ch := l.next()
-		if ch == EOF || ch == '\n' || ch == '\r' {
+		if ch == runeEOF || ch == '\n' || ch == '\r' {
 			return l.newError("unterminated string")
+		}
+		if ch == quote {
+			break
 		}
 		if ch == '\\' {
 			if err := l.scanEscape(buf); err != nil {
 				return err
 			}
+		} else {
+			writeRune(buf, ch)
 		}
-		if ch == quote {
-			break
-		}
-		writeRune(buf, ch)
 	}
 	return nil
 }
@@ -221,7 +237,7 @@ func (l *Lexer) scanMultilineString(buf *bytes.Buffer) error {
 	}
 	for {
 		ch = l.next()
-		if ch == EOF {
+		if ch == runeEOF {
 			return l.newError("unterminated multiline string")
 		}
 		if ch == ']' && l.peek() == ']' {
@@ -276,7 +292,7 @@ redo:
 	case isWhitespace(ch): // whitespace
 		l.next()
 		goto redo
-	case isNewline(ch): // new line
+	case isNewline(ch): // newline
 		l.scanNewline()
 		goto redo
 	case isDecimal(ch):
@@ -297,11 +313,12 @@ redo:
 		goto finally
 	default:
 		switch ch {
-		case EOF:
-			token.Type = EOF
+		case runeEOF:
+			token.Type = TokenEOF
 			goto finally
 		case '+', '*', '/', '%', '^', '#', '(', ')', '{', '}', ']', ';', ',', ':':
-			token.Str = string(ch)
+			writeRune(buf, l.next())
+			token.Str = buf.String()
 			token.Type = operators[token.Str]
 			goto finally
 		case '[':
@@ -317,6 +334,16 @@ redo:
 			}
 			token.Str = buf.String()
 			goto finally
+		case '~':
+			writeRune(buf, l.next())
+			ch = l.peek()
+			if ch == '=' {
+				token.Type = TokenNeq
+				token.Str = buf.String()
+				goto finally
+			}
+			err = l.newError("invalid token")
+			return
 		case '-':
 			writeRune(buf, l.next())
 			token.Type = TokenMinus

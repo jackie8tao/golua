@@ -173,5 +173,5 @@ type Token struct {
 }
 
 func (t *Token) String() string {
-	return fmt.Sprintf("<type:%v, str:%v>", t.Name, t.Str)
+	return fmt.Sprintf("<type:%v, str:\"%v\">", t.Name, t.Str)
 }
