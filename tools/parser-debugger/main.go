@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/jackie8tao/golua/pkg/ast"
 	"github.com/jackie8tao/golua/pkg/lexer"
+	"github.com/jackie8tao/golua/pkg/parser"
 )
 
 func main() {
@@ -27,7 +27,7 @@ func main() {
 		}
 		path := filepath.Join(*dir, v.Name())
 		if err = parseLua(path); err != nil {
-			panic(err)
+			fmt.Println(path, ":", err)
 		}
 	}
 }
@@ -40,15 +40,11 @@ func parseLua(path string) error {
 	defer fp.Close()
 
 	lx := lexer.NewLexer(fp, path)
-	for {
-		token, err := lx.Scan()
-		if err != nil {
-			return err
-		}
-		if token.Type == ast.TokenEOF {
-			break
-		}
-		fmt.Println(path, ":", token.String())
+	ps := parser.NewParser(lx)
+	block, err := ps.Parse()
+	if err != nil {
+		return err
 	}
+	fmt.Println(path, ":", block)
 	return nil
 }

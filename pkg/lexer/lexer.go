@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+
+	"github.com/jackie8tao/golua/pkg/ast"
 )
 
 const runeEOF = -1
 
 type Error struct {
-	Pos     Position
+	Pos     ast.Position
 	Message string
 }
 
@@ -27,14 +29,14 @@ func (e *Error) Error() string {
 }
 
 type Lexer struct {
-	Pos    Position
+	Pos    ast.Position
 	reader *bufio.Reader
 }
 
 func NewLexer(reader io.Reader, source string) *Lexer {
 	return &Lexer{
 		reader: bufio.NewReaderSize(reader, 4096),
-		Pos: Position{
+		Pos: ast.Position{
 			Source: source,
 			Line:   1,
 			Column: 0,
@@ -283,7 +285,7 @@ func isNewline(ch rune) bool {
 	return ch == '\n' || ch == '\r'
 }
 
-func (l *Lexer) Scan() (token Token, err error) {
+func (l *Lexer) Scan() (token ast.Token, err error) {
 redo:
 	ch := l.peek()
 	buf := &bytes.Buffer{}
@@ -300,12 +302,12 @@ redo:
 		if err != nil {
 			return
 		}
-		token.Type = TokenNumber
+		token.Type = ast.TokenNumber
 		token.Str = buf.String()
 		goto finally
 	case isIdent(ch, 0):
 		l.scanIdentifier(buf)
-		token.Type = TokenIdentifier
+		token.Type = ast.TokenIdentifier
 		if tokenType, ok := reservedWords[buf.String()]; ok {
 			token.Type = tokenType
 		}
@@ -314,7 +316,7 @@ redo:
 	default:
 		switch ch {
 		case runeEOF:
-			token.Type = TokenEOF
+			token.Type = ast.TokenEOF
 			goto finally
 		case '+', '*', '/', '%', '^', '#', '(', ')', '{', '}', ']', ';', ',', ':':
 			writeRune(buf, l.next())
@@ -324,13 +326,13 @@ redo:
 		case '[':
 			writeRune(buf, l.next())
 			if ch = l.peek(); ch == '[' {
-				token.Type = TokenString
+				token.Type = ast.TokenString
 				buf.Reset()
 				if err = l.scanMultilineString(buf); err != nil {
 					return
 				}
 			} else {
-				token.Type = TokenLbracket
+				token.Type = ast.TokenLbracket
 			}
 			token.Str = buf.String()
 			goto finally
@@ -338,7 +340,8 @@ redo:
 			writeRune(buf, l.next())
 			ch = l.peek()
 			if ch == '=' {
-				token.Type = TokenNeq
+				writeRune(buf, l.next())
+				token.Type = ast.TokenNeq
 				token.Str = buf.String()
 				goto finally
 			}
@@ -346,7 +349,7 @@ redo:
 			return
 		case '-':
 			writeRune(buf, l.next())
-			token.Type = TokenMinus
+			token.Type = ast.TokenMinus
 			if ch = l.peek(); ch == '-' { // comment
 				_ = l.next()
 				if err = l.skipComments(); err != nil {
@@ -358,40 +361,40 @@ redo:
 			goto finally
 		case '=':
 			writeRune(buf, l.next())
-			token.Type = TokenAssign
+			token.Type = ast.TokenAssign
 			if ch = l.peek(); ch == '=' {
 				writeRune(buf, l.next())
-				token.Type = TokenEq
+				token.Type = ast.TokenEq
 			}
 			token.Str = buf.String()
 			goto finally
 		case '<':
 			writeRune(buf, l.next())
-			token.Type = TokenLt
+			token.Type = ast.TokenLt
 			if ch = l.peek(); ch == '=' {
 				writeRune(buf, l.next())
-				token.Type = TokenLeq
+				token.Type = ast.TokenLeq
 			}
 			token.Str = buf.String()
 			goto finally
 		case '>':
 			writeRune(buf, l.next())
-			token.Type = TokenGt
+			token.Type = ast.TokenGt
 			if ch = l.peek(); ch == '=' {
 				writeRune(buf, l.next())
-				token.Type = TokenGeq
+				token.Type = ast.TokenGeq
 			}
 			token.Str = buf.String()
 			goto finally
 		case '.':
 			writeRune(buf, l.next())
-			token.Type = TokenDot
+			token.Type = ast.TokenDot
 			if ch = l.peek(); ch == '.' {
 				writeRune(buf, l.next())
-				token.Type = TokenDotDot
+				token.Type = ast.TokenDotDot
 				if ch = l.peek(); ch == '.' {
 					writeRune(buf, l.next())
-					token.Type = TokenDots
+					token.Type = ast.TokenDots
 				}
 			}
 			token.Str = buf.String()
@@ -401,7 +404,7 @@ redo:
 			if err != nil {
 				return
 			}
-			token.Type = TokenString
+			token.Type = ast.TokenString
 			token.Str = buf.String()
 			goto finally
 		default:
