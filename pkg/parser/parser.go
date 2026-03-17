@@ -126,8 +126,8 @@ func (p *Parser) parseExpr() (ast.Expr, error) {
 
 	for {
 		switch p.next.Type {
-		case ast.TokenAdd, ast.TokenMinus, ast.TokenMultiply, ast.TokenDivide,
-			ast.TokenXor, ast.TokenDotDot, ast.TokenLt, ast.TokenLeq,
+		case ast.TokenAdd, ast.TokenSub, ast.TokenMul, ast.TokenDiv,
+			ast.TokenPow, ast.TokenDotDot, ast.TokenLt, ast.TokenLeq,
 			ast.TokenGt, ast.TokenGeq, ast.TokenEq, ast.TokenNeq,
 			ast.TokenAnd, ast.TokenOr:
 			p.advance() // eat operator
@@ -190,7 +190,7 @@ func (p *Parser) parsePrimaryExpr() (ast.Expr, error) {
 			HasVariant: funcBody.HasVariant,
 			Block:      funcBody.Block,
 		}, nil
-	case ast.TokenMinus, ast.TokenNot:
+	case ast.TokenSub, ast.TokenNot:
 		p.advance() // eat '-' or 'not'
 		expr, err := p.parseExpr()
 		if err != nil {

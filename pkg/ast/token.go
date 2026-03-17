@@ -31,10 +31,10 @@ const (
 	TokenUntil     // until
 	TokenWhile     // while
 	TokenAdd       // +
-	TokenMinus     // -
-	TokenMultiply  // *
-	TokenDivide    // /
-	TokenXor       // ^
+	TokenSub       // -
+	TokenMul       // *
+	TokenDiv       // /
+	TokenPow       // ^
 	TokenAssign    // =
 	TokenNeq       // ~=
 	TokenLeq       // <=

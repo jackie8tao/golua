@@ -349,7 +349,7 @@ redo:
 			return
 		case '-':
 			writeRune(buf, l.next())
-			token.Type = ast.TokenMinus
+			token.Type = ast.TokenSub
 			if ch = l.peek(); ch == '-' { // comment
 				_ = l.next()
 				if err = l.skipComments(); err != nil {
