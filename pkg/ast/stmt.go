@@ -54,7 +54,6 @@ type IfStmt struct {
 }
 
 type ElseIfSeg struct {
-	BaseStmt
 	Cond Expr
 	Then *Block
 }

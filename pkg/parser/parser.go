@@ -29,11 +29,11 @@ func (p *Parser) advance() {
 
 func (p *Parser) Parse() (ast.Node, error) {
 	p.advance()
-	n, err := p.parseBlock()
+	chunk, err := p.parseChunk()
 	if err != nil {
 		return nil, err
 	}
-	return n, nil
+	return chunk, nil
 }
 
 // block -> chunk
@@ -243,9 +243,6 @@ func (p *Parser) parsePrefixExpr() (ast.Expr, error) {
 		switch p.next.Type {
 		case ast.TokenLbracket: // '['
 			p.advance() // eat '['
-			//if p.next.Type != ast.TokenIdentifier {
-			//	return nil, fmt.Errorf("expected identifier after left bracket")
-			//}
 			index, err := p.parseExpr()
 			if err != nil {
 				return nil, err
@@ -607,6 +604,23 @@ func (p *Parser) parseExprList() ([]ast.Expr, error) {
 // stmt -> 'for' Name '=' exp ',' exp [',' exp] 'do' block 'end'
 // stmt -> 'for' Name {',' Name} 'in' explist 'do' block 'end'
 func (p *Parser) parseForStmt() (ast.Stmt, error) {
+	// used for 'do' block 'end'
+	parseBlockFunc := func() (*ast.Block, error) {
+		if p.next.Type != ast.TokenDo {
+			return nil, fmt.Errorf("expected 'do' keyword after for loop")
+		}
+		p.advance() // eat 'do'
+		block, err := p.parseBlock()
+		if err != nil {
+			return nil, err
+		}
+		if p.next.Type != ast.TokenEnd {
+			return nil, fmt.Errorf("expected 'end' after for loop")
+		}
+		p.advance() // eat 'end'
+		return block, nil
+	}
+
 	if p.next.Type != ast.TokenFor {
 		return nil, fmt.Errorf("expected 'for' keyword")
 	}
@@ -646,18 +660,12 @@ func (p *Parser) parseForStmt() (ast.Stmt, error) {
 			}
 			stmt.StepExpr = stepExpr
 		}
-		if p.next.Type != ast.TokenDo {
-			return nil, fmt.Errorf("expected 'do' keyword after for loop")
-		}
-		p.advance() // eat 'do'
-		block, err := p.parseBlock()
+
+		// block
+		block, err := parseBlockFunc()
 		if err != nil {
 			return nil, err
 		}
-		if p.next.Type != ast.TokenEnd {
-			return nil, fmt.Errorf("expected 'end' after for loop")
-		}
-		p.advance() // eat 'end'
 		stmt.Block = block
 		return stmt, nil
 	}
@@ -687,18 +695,10 @@ func (p *Parser) parseForStmt() (ast.Stmt, error) {
 	}
 	stmt.Exprs = exprs
 
-	if p.next.Type != ast.TokenDo {
-		return nil, fmt.Errorf("expected 'do' keyword after for loop")
-	}
-	p.advance() // eat 'do'
-	block, err := p.parseBlock()
+	block, err := parseBlockFunc()
 	if err != nil {
 		return nil, err
 	}
-	if p.next.Type != ast.TokenEnd {
-		return nil, fmt.Errorf("expected 'end' after for loop")
-	}
-	p.advance() // eat 'end'
 	stmt.Block = block
 	return stmt, nil
 }
@@ -725,10 +725,6 @@ func (p *Parser) parseLocalFuncDefStmt() (ast.Stmt, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse function body: %w", err)
 	}
-	//if p.next.Type != ast.TokenEnd {
-	//	return nil, fmt.Errorf("expected 'end' after local function definition")
-	//}
-	//p.advance() // eat 'end'
 	stmt.Params = body.Params
 	stmt.Block = body.Block
 	return stmt, nil
@@ -775,10 +771,6 @@ func (p *Parser) parseFuncDefStmt() (ast.Stmt, error) {
 	if err != nil {
 		return nil, err
 	}
-	//if p.next.Type != ast.TokenEnd {
-	//	return nil, fmt.Errorf("expected 'end' after function definition")
-	//}
-	//p.advance() // eat 'end'
 	stmt.Params = body.Params
 	stmt.Block = body.Block
 	return stmt, nil

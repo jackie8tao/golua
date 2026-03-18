@@ -262,10 +262,10 @@ func (l *Lexer) skipComments() error {
 
 	// single line comment
 	for {
-		ch = l.next()
 		if ch == '\n' || ch == '\r' {
 			break
 		}
+		ch = l.next()
 	}
 
 	return nil
