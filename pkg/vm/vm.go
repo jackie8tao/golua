@@ -14,6 +14,7 @@ type Vm struct {
 	codes     []OpCode
 	constants []LValue
 	globals   map[string]LValue
+	locals    []LValue
 	base      uint // stack base
 	top       uint // stack top
 	pc        uint // program counter
@@ -117,6 +118,23 @@ func (v *Vm) Execute() error {
 			key := v.constants[idx].(*LString).Value
 			val := v.stPop()
 			v.globals[key] = val
+			v.pc++
+		case OpGetLocal:
+			v.pc++
+			idx := int(v.codes[v.pc])
+			if idx >= len(v.locals) {
+				return fmt.Errorf("invalid local index")
+			}
+			v.stPush(v.locals[idx])
+			v.pc++
+		case OpSetLocal:
+			v.pc++
+			idx := int(v.codes[v.pc])
+			if idx >= len(v.locals) {
+				return fmt.Errorf("invalid local index")
+			}
+			val := v.stPop()
+			v.locals[idx] = val
 			v.pc++
 		default:
 			panic("invalid opcode")

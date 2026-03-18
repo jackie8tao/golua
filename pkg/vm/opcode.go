@@ -9,7 +9,9 @@ const (
 	OpDiv                           // /
 	OpPow                           // ^
 	OpConstant                      // load constant
-	OpGetGlobal                     // get global value
-	OpSetGlobal                     // set global value
+	OpGetGlobal                     // get global variable
+	OpSetGlobal                     // set global variable
+	OpGetLocal                      // get local variable
+	OpSetLocal                      // set local variable
 	OpPrint                         // for debugging
 )
