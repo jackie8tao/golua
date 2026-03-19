@@ -1,17 +1,30 @@
 package vm
 
-type OpCode uint8
-
+// OpCode
 const (
-	OpAdd       OpCode = iota + 128 // +
-	OpSub                           // -
-	OpMul                           // *
-	OpDiv                           // /
-	OpPow                           // ^
-	OpConstant                      // load constant
-	OpGetGlobal                     // get global variable
-	OpSetGlobal                     // set global variable
-	OpGetLocal                      // get local variable
-	OpSetLocal                      // set local variable
-	OpPrint                         // for debugging
+	OpAdd       uint8 = iota + 128 // +
+	OpSub                          // -
+	OpMul                          // *
+	OpDiv                          // /
+	OpPow                          // ^
+	OpConstant                     // load constant
+	OpGetGlobal                    // get global variable
+	OpSetGlobal                    // set global variable
+	OpGetLocal                     // get local variable
+	OpSetLocal                     // set local variable
+	OpPrint                        // for debugging
 )
+
+var opCodeNames = map[uint8]string{
+	OpAdd:       "OpAdd",
+	OpSub:       "OpSub",
+	OpMul:       "OpMul",
+	OpDiv:       "OpDiv",
+	OpPow:       "OpPow",
+	OpConstant:  "OpConstant",
+	OpGetGlobal: "OpGetGlobal",
+	OpSetGlobal: "OpSetGlobal",
+	OpGetLocal:  "OpGetLocal",
+	OpSetLocal:  "OpSetLocal",
+	OpPrint:     "OpPrint",
+}

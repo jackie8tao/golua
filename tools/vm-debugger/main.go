@@ -1,27 +1,64 @@
 package main
 
-import "github.com/jackie8tao/golua/pkg/vm"
+import (
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+
+	"github.com/jackie8tao/golua/pkg/lexer"
+	"github.com/jackie8tao/golua/pkg/parser"
+	"github.com/jackie8tao/golua/pkg/vm"
+)
 
 func main() {
-	v := vm.NewVm()
-	//v.WriteCode(vm.OpConstant, v.WriteConstant(&vm.LNumber{Value: 2}))
-	//v.WriteCode(vm.OpConstant, v.WriteConstant(&vm.LNumber{Value: 1}))
-	//v.WriteCode(vm.OpPow)
-	//v.WriteCode(vm.OpPrint)
-	//v.WriteCode(vm.OpConstant, v.WriteConstant(&vm.LString{Value: "Hello World"}))
-	//v.WriteCode(vm.OpPrint)
-	v.WriteGlobals("a", &vm.LNumber{Value: 1})
-	v.WriteGlobals("b", &vm.LNumber{Value: 2})
-	aIdx := v.WriteConstant(&vm.LString{Value: "a"})
-	bIdx := v.WriteConstant(&vm.LString{Value: "b"})
-	v.WriteCode(vm.OpGetGlobal, aIdx)
-	v.WriteCode(vm.OpGetGlobal, bIdx)
-	v.WriteCode(vm.OpAdd)
-	v.WriteCode(vm.OpSetGlobal, aIdx)
-	v.WriteCode(vm.OpGetGlobal, aIdx)
-	v.WriteCode(vm.OpPrint)
-	err := v.Execute()
+	dir := flag.String("dir", ".", "directory to scan")
+	flag.Parse()
+
+	entries, err := os.ReadDir(*dir)
 	if err != nil {
 		panic(err)
 	}
+	for _, v := range entries {
+		if v.IsDir() {
+			continue
+		}
+		if filepath.Ext(v.Name()) != ".lua" {
+			continue
+		}
+		path := filepath.Join(*dir, v.Name())
+		if err = executeLua(path); err != nil {
+			fmt.Println(path, ":", err)
+		}
+	}
+}
+
+func executeLua(path string) error {
+	fp, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer fp.Close()
+
+	lx := lexer.NewLexer(fp, path)
+	ps := parser.NewParser(lx)
+	block, err := ps.Parse()
+	if err != nil {
+		return err
+	}
+	c := vm.NewCompiler()
+	funcProto, err := c.Compile(block)
+	if err != nil {
+		return err
+	}
+	//err = c.Disassemble(funcProto)
+	//if err != nil {
+	//	return err
+	//}
+	v := vm.NewVm(funcProto)
+	err = v.Execute()
+	if err != nil {
+		return err
+	}
+	return nil
 }

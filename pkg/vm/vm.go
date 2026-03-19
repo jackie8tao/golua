@@ -10,30 +10,21 @@ const defaultStackSize = 1024
 type binaryOpHandler func(v1, v2 LValue) (LValue, error)
 
 type Vm struct {
-	stack     []LValue
-	codes     []OpCode
-	constants []LValue
-	globals   map[string]LValue
-	locals    []LValue
-	base      uint // stack base
-	top       uint // stack top
-	pc        uint // program counter
-
-	// extra utils files
-	binaryOpTable map[OpCode]binaryOpHandler
+	stack         []LValue
+	base          uint // stack base
+	top           uint // stack top
+	fn            *FuncProto
+	binaryOpTable map[uint8]binaryOpHandler
 }
 
-func NewVm() *Vm {
+func NewVm(funcProto *FuncProto) *Vm {
 	vm := &Vm{
-		stack:     make([]LValue, defaultStackSize),
-		codes:     make([]OpCode, 0),
-		constants: make([]LValue, 0),
-		globals:   make(map[string]LValue),
-		base:      0,
-		top:       0,
-		pc:        0,
+		stack: make([]LValue, defaultStackSize),
+		base:  0,
+		top:   uint(funcProto.maxLocals),
+		fn:    funcProto,
 	}
-	vm.binaryOpTable = map[OpCode]binaryOpHandler{
+	vm.binaryOpTable = map[uint8]binaryOpHandler{
 		OpAdd: vm.opAdd,
 		OpSub: vm.opSub,
 		OpMul: vm.opMul,
@@ -43,42 +34,27 @@ func NewVm() *Vm {
 	return vm
 }
 
-func (v *Vm) WriteGlobals(key string, val LValue) {
-	v.globals[key] = val
-}
-
-func (v *Vm) WriteConstant(val LValue) uint8 {
-	v.constants = append(v.constants, val)
-	return uint8(len(v.constants) - 1)
-}
-
-func (v *Vm) WriteCode(code OpCode, operands ...uint8) {
-	v.codes = append(v.codes, code)
-	for _, op := range operands {
-		v.codes = append(v.codes, OpCode(op))
-	}
-}
-
 func (v *Vm) Execute() error {
 	for {
-		if v.pc >= uint(len(v.codes)) {
+		if v.fn.pc >= len(v.fn.codes) {
 			break
 		}
-		switch v.codes[v.pc] {
+		switch v.fn.codes[v.fn.pc] {
 		case OpPrint: // only used for debugging
 			val := v.stPop()
 			fmt.Println(val.String())
-			v.pc++
+			v.fn.pc++
 		case OpConstant:
-			v.pc++
-			idx := int(v.codes[v.pc])
-			if idx >= len(v.constants) {
-				return fmt.Errorf("invalid constant index")
+			args := v.fnOpArg(2)
+			idx := convToUint16([2]uint8{args[0], args[1]})
+			val, err := v.getFnConstant(idx)
+			if err != nil {
+				return err
 			}
-			v.stPush(v.constants[idx])
-			v.pc++
+			v.stPush(val)
+			v.fn.pc++
 		case OpAdd, OpSub, OpMul, OpDiv, OpPow:
-			handler, ok := v.binaryOpTable[v.codes[v.pc]]
+			handler, ok := v.binaryOpTable[v.fn.codes[v.fn.pc]]
 			if !ok {
 				return fmt.Errorf("cannot find binary operator handler")
 			}
@@ -89,58 +65,70 @@ func (v *Vm) Execute() error {
 				return err
 			}
 			v.stPush(res)
-			v.pc++
+			v.fn.pc++
 		case OpGetGlobal:
-			v.pc++
-			idx := int(v.codes[v.pc])
-			if idx >= len(v.constants) {
-				return fmt.Errorf("invalid constant index")
+			args := v.fnOpArg(2)
+			idx := convToUint16([2]uint8{args[0], args[1]})
+			key, err := v.getFnConstant(idx)
+			if err != nil {
+				return err
 			}
-			if v.constants[idx].Type() != LTString {
-				return fmt.Errorf("invalid global name")
+			if key.Type() != LTString {
+				return fmt.Errorf("invalid global name type")
 			}
-			key := v.constants[idx].(*LString).Value
-			val, ok := v.globals[key]
+			val, ok := v.fn.globals[key.(*LString).Value]
 			if !ok {
-				return fmt.Errorf("invalid global variable: %s", key)
+				return fmt.Errorf("cannot find global value")
 			}
 			v.stPush(val)
-			v.pc++
+			v.fn.pc++
 		case OpSetGlobal:
-			v.pc++
-			idx := int(v.codes[v.pc])
-			if idx >= len(v.constants) {
-				return fmt.Errorf("invalid constant index")
+			args := v.fnOpArg(2)
+			idx := convToUint16([2]uint8{args[0], args[1]})
+			key, err := v.getFnConstant(idx)
+			if err != nil {
+				return err
 			}
-			if v.constants[idx].Type() != LTString {
-				return fmt.Errorf("invalid global name")
+			if key.Type() != LTString {
+				return fmt.Errorf("invalid global name type")
 			}
-			key := v.constants[idx].(*LString).Value
 			val := v.stPop()
-			v.globals[key] = val
-			v.pc++
-		case OpGetLocal:
-			v.pc++
-			idx := int(v.codes[v.pc])
-			if idx >= len(v.locals) {
-				return fmt.Errorf("invalid local index")
-			}
-			v.stPush(v.locals[idx])
-			v.pc++
+			v.fn.globals[key.(*LString).Value] = val
+			v.fn.pc++
 		case OpSetLocal:
-			v.pc++
-			idx := int(v.codes[v.pc])
-			if idx >= len(v.locals) {
-				return fmt.Errorf("invalid local index")
-			}
+			args := v.fnOpArg(2)
+			idx := convToUint16([2]uint8{args[0], args[1]})
 			val := v.stPop()
-			v.locals[idx] = val
-			v.pc++
+			v.stack[v.base+uint(idx)] = val
+			v.fn.pc++
+		case OpGetLocal:
+			args := v.fnOpArg(2)
+			idx := convToUint16([2]uint8{args[0], args[1]})
+			val := v.stack[v.base+uint(idx)]
+			v.stPush(val)
+			v.fn.pc++
 		default:
 			panic("invalid opcode")
 		}
 	}
 	return nil
+}
+
+func (v *Vm) fnOpArg(n int) []uint8 {
+	res := make([]uint8, 0)
+	for i := 0; i < n; i++ {
+		v.fn.pc++
+		res = append(res, v.fn.codes[v.fn.pc])
+	}
+	return res
+}
+
+// used for vm to get constant by index
+func (v *Vm) getFnConstant(idx uint16) (LValue, error) {
+	if int(idx) >= len(v.fn.constants) {
+		return nil, fmt.Errorf("constant index overflow")
+	}
+	return v.fn.constants[idx], nil
 }
 
 func (v *Vm) stPop() LValue {
@@ -240,6 +228,6 @@ func (v *Vm) opPow(v1, v2 LValue) (LValue, error) {
 		return nil, err
 	}
 	return &LNumber{
-		Value: float32(math.Pow(float64(f1.Value), float64(f2.Value))),
+		Value: math.Pow(f1.Value, f2.Value),
 	}, nil
 }

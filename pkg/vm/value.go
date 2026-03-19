@@ -61,7 +61,7 @@ func (l *LBool) Type() LValueType {
 }
 
 type LNumber struct {
-	Value float32
+	Value float64
 }
 
 func (l *LNumber) String() string {
@@ -82,5 +82,58 @@ func (l *LString) String() string {
 
 func (l *LString) Type() LValueType {
 	return LTString
+}
 
+type LTable struct {
+	Metadata LValue
+	array    []LValue
+	dict     map[LValue]LValue
+}
+
+func (l *LTable) String() string {
+	return fmt.Sprintf("table: %p", l)
+}
+
+func (l *LTable) Type() LValueType {
+	return LTTable
+}
+
+type LGlobal struct {
+}
+
+type LState struct {
+	G   *LGlobal
+	Env *LTable
+}
+
+func (l *LState) String() string {
+	return fmt.Sprintf("thread: %p", l)
+}
+
+func (l *LState) Type() LValueType {
+	return LTThread
+}
+
+type LUserData struct {
+	Metadata *LValue
+	Env      *LValue
+}
+
+func (l *LUserData) String() string {
+	return fmt.Sprintf("userdata: %p", l)
+}
+
+func (l *LUserData) Type() LValueType {
+	return LTUserData
+}
+
+type LFunction struct {
+}
+
+func (l *LFunction) String() string {
+	return fmt.Sprintf("function: %p", l)
+}
+
+func (l *LFunction) Type() LValueType {
+	return LTFunction
 }
