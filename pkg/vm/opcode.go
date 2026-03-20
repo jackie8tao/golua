@@ -12,6 +12,8 @@ const (
 	OpSetGlobal                    // set global variable
 	OpGetLocal                     // get local variable
 	OpSetLocal                     // set local variable
+	OpCall                         // function call
+	OpReturn                       // return function
 	OpPrint                        // for debugging
 )
 
@@ -26,5 +28,7 @@ var opCodeNames = map[uint8]string{
 	OpSetGlobal: "OpSetGlobal",
 	OpGetLocal:  "OpGetLocal",
 	OpSetLocal:  "OpSetLocal",
+	OpCall:      "OpCall",
+	OpReturn:    "OpReturn",
 	OpPrint:     "OpPrint",
 }

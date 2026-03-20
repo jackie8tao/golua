@@ -10,40 +10,46 @@ const defaultStackSize = 1024
 type binaryOpHandler func(v1, v2 LValue) (LValue, error)
 
 type Vm struct {
-	stack         []LValue
-	base          uint // stack base
-	top           uint // stack top
-	fn            *FuncProto
-	binaryOpTable map[uint8]binaryOpHandler
+	stack    []LValue
+	bp       uint // stack bp
+	sp       uint // stack sp
+	curFrame *CallFrame
+}
+
+var binaryOpTable = map[uint8]binaryOpHandler{
+	OpAdd: opAdd,
+	OpSub: opSub,
+	OpMul: opMul,
+	OpDiv: opDiv,
+	OpPow: opPow,
 }
 
 func NewVm(funcProto *FuncProto) *Vm {
 	vm := &Vm{
 		stack: make([]LValue, defaultStackSize),
-		base:  0,
-		top:   uint(funcProto.maxLocals),
-		fn:    funcProto,
-	}
-	vm.binaryOpTable = map[uint8]binaryOpHandler{
-		OpAdd: vm.opAdd,
-		OpSub: vm.opSub,
-		OpMul: vm.opMul,
-		OpDiv: vm.opDiv,
-		OpPow: vm.opPow,
+		bp:    0,
+		sp:    uint(funcProto.maxLocals),
+		curFrame: &CallFrame{
+			fn:     funcProto,
+			parent: nil,
+			bp:     0,
+			sp:     0,
+			pc:     0,
+		},
 	}
 	return vm
 }
 
 func (v *Vm) Execute() error {
 	for {
-		if v.fn.pc >= len(v.fn.codes) {
+		if v.curFrame.fn.pc >= len(v.curFrame.fn.codes) {
 			break
 		}
-		switch v.fn.codes[v.fn.pc] {
+		switch v.curFrame.fn.codes[v.curFrame.fn.pc] {
 		case OpPrint: // only used for debugging
 			val := v.stPop()
 			fmt.Println(val.String())
-			v.fn.pc++
+			v.curFrame.fn.pc++
 		case OpConstant:
 			args := v.fnOpArg(2)
 			idx := convToUint16([2]uint8{args[0], args[1]})
@@ -52,9 +58,9 @@ func (v *Vm) Execute() error {
 				return err
 			}
 			v.stPush(val)
-			v.fn.pc++
+			v.curFrame.fn.pc++
 		case OpAdd, OpSub, OpMul, OpDiv, OpPow:
-			handler, ok := v.binaryOpTable[v.fn.codes[v.fn.pc]]
+			handler, ok := binaryOpTable[v.curFrame.fn.codes[v.curFrame.fn.pc]]
 			if !ok {
 				return fmt.Errorf("cannot find binary operator handler")
 			}
@@ -65,7 +71,7 @@ func (v *Vm) Execute() error {
 				return err
 			}
 			v.stPush(res)
-			v.fn.pc++
+			v.curFrame.fn.pc++
 		case OpGetGlobal:
 			args := v.fnOpArg(2)
 			idx := convToUint16([2]uint8{args[0], args[1]})
@@ -76,12 +82,12 @@ func (v *Vm) Execute() error {
 			if key.Type() != LTString {
 				return fmt.Errorf("invalid global name type")
 			}
-			val, ok := v.fn.globals[key.(*LString).Value]
+			val, ok := v.curFrame.fn.globals[key.(*LString).Value]
 			if !ok {
 				return fmt.Errorf("cannot find global value")
 			}
 			v.stPush(val)
-			v.fn.pc++
+			v.curFrame.fn.pc++
 		case OpSetGlobal:
 			args := v.fnOpArg(2)
 			idx := convToUint16([2]uint8{args[0], args[1]})
@@ -93,20 +99,48 @@ func (v *Vm) Execute() error {
 				return fmt.Errorf("invalid global name type")
 			}
 			val := v.stPop()
-			v.fn.globals[key.(*LString).Value] = val
-			v.fn.pc++
+			v.curFrame.fn.globals[key.(*LString).Value] = val
+			v.curFrame.fn.pc++
 		case OpSetLocal:
 			args := v.fnOpArg(2)
 			idx := convToUint16([2]uint8{args[0], args[1]})
 			val := v.stPop()
-			v.stack[v.base+uint(idx)] = val
-			v.fn.pc++
+			v.stack[v.bp+uint(idx)] = val
+			v.curFrame.fn.pc++
 		case OpGetLocal:
 			args := v.fnOpArg(2)
 			idx := convToUint16([2]uint8{args[0], args[1]})
-			val := v.stack[v.base+uint(idx)]
+			val := v.stack[v.bp+uint(idx)]
 			v.stPush(val)
-			v.fn.pc++
+			v.curFrame.fn.pc++
+		case OpCall:
+			argCount := v.fnOpIdxArg()
+			fn := v.stack[v.bp+uint(argCount)-1]
+			if fn.Type() != LTFunction {
+				return fmt.Errorf("invalid function type")
+			}
+			newBp := v.sp - uint(argCount)
+			v.curFrame.bp = v.bp
+			newCallFrame := &CallFrame{
+				fn:     fn.(*LFunction).Fn,
+				parent: v.curFrame,
+				bp:     newBp,
+				pc:     0,
+			}
+			v.bp = newBp
+			v.sp = newBp + uint(newCallFrame.fn.maxLocals)
+			v.curFrame = newCallFrame
+			v.curFrame.fn.pc++
+		case OpReturn:
+			retVal := v.stPop()
+			v.sp = v.curFrame.bp - 1
+			v.curFrame = v.curFrame.parent
+			if v.curFrame == nil {
+				return nil
+			}
+			v.bp = v.curFrame.bp
+			v.stPush(retVal)
+			v.curFrame.fn.pc++
 		default:
 			panic("invalid opcode")
 		}
@@ -114,26 +148,32 @@ func (v *Vm) Execute() error {
 	return nil
 }
 
+func (v *Vm) fnOpIdxArg() uint16 {
+	args := v.fnOpArg(2)
+	idx := convToUint16([2]uint8{args[0], args[1]})
+	return idx
+}
+
 func (v *Vm) fnOpArg(n int) []uint8 {
 	res := make([]uint8, 0)
 	for i := 0; i < n; i++ {
-		v.fn.pc++
-		res = append(res, v.fn.codes[v.fn.pc])
+		v.curFrame.fn.pc++
+		res = append(res, v.curFrame.fn.codes[v.curFrame.fn.pc])
 	}
 	return res
 }
 
 // used for vm to get constant by index
 func (v *Vm) getFnConstant(idx uint16) (LValue, error) {
-	if int(idx) >= len(v.fn.constants) {
+	if int(idx) >= len(v.curFrame.fn.constants) {
 		return nil, fmt.Errorf("constant index overflow")
 	}
-	return v.fn.constants[idx], nil
+	return v.curFrame.fn.constants[idx], nil
 }
 
 func (v *Vm) stPop() LValue {
-	v.top--
-	idx := v.base + v.top
+	v.sp--
+	idx := v.bp + v.sp
 	if int(idx) < 0 {
 		panic("stack underflow")
 	}
@@ -143,31 +183,22 @@ func (v *Vm) stPop() LValue {
 }
 
 func (v *Vm) stPush(val LValue) {
-	idx := v.base + v.top
+	idx := v.bp + v.sp
 	if int(idx) >= len(v.stack) {
 		stack := make([]LValue, 2*len(v.stack))
 		copy(stack, v.stack)
 		v.stack = stack
 	}
 	v.stack[idx] = val
-	v.top++
+	v.sp++
 }
 
-func (v *Vm) convToLNumber(val LValue) (*LNumber, error) {
-	switch val.Type() {
-	case LTNumber:
-		return val.(*LNumber), nil
-	default:
-		return nil, fmt.Errorf("cannot convert to number")
-	}
-}
-
-func (v *Vm) opAdd(v1, v2 LValue) (LValue, error) {
-	f1, err := v.convToLNumber(v1)
+func opAdd(v1, v2 LValue) (LValue, error) {
+	f1, err := convToLNumber(v1)
 	if err != nil {
 		return nil, err
 	}
-	f2, err := v.convToLNumber(v2)
+	f2, err := convToLNumber(v2)
 	if err != nil {
 		return nil, err
 	}
@@ -176,12 +207,12 @@ func (v *Vm) opAdd(v1, v2 LValue) (LValue, error) {
 	}, nil
 }
 
-func (v *Vm) opSub(v1, v2 LValue) (LValue, error) {
-	f1, err := v.convToLNumber(v1)
+func opSub(v1, v2 LValue) (LValue, error) {
+	f1, err := convToLNumber(v1)
 	if err != nil {
 		return nil, err
 	}
-	f2, err := v.convToLNumber(v2)
+	f2, err := convToLNumber(v2)
 	if err != nil {
 		return nil, err
 	}
@@ -190,12 +221,12 @@ func (v *Vm) opSub(v1, v2 LValue) (LValue, error) {
 	}, nil
 }
 
-func (v *Vm) opMul(v1, v2 LValue) (LValue, error) {
-	f1, err := v.convToLNumber(v1)
+func opMul(v1, v2 LValue) (LValue, error) {
+	f1, err := convToLNumber(v1)
 	if err != nil {
 		return nil, err
 	}
-	f2, err := v.convToLNumber(v2)
+	f2, err := convToLNumber(v2)
 	if err != nil {
 		return nil, err
 	}
@@ -204,12 +235,12 @@ func (v *Vm) opMul(v1, v2 LValue) (LValue, error) {
 	}, nil
 }
 
-func (v *Vm) opDiv(v1, v2 LValue) (LValue, error) {
-	f1, err := v.convToLNumber(v1)
+func opDiv(v1, v2 LValue) (LValue, error) {
+	f1, err := convToLNumber(v1)
 	if err != nil {
 		return nil, err
 	}
-	f2, err := v.convToLNumber(v2)
+	f2, err := convToLNumber(v2)
 	if err != nil {
 		return nil, err
 	}
@@ -218,12 +249,12 @@ func (v *Vm) opDiv(v1, v2 LValue) (LValue, error) {
 	}, nil
 }
 
-func (v *Vm) opPow(v1, v2 LValue) (LValue, error) {
-	f1, err := v.convToLNumber(v1)
+func opPow(v1, v2 LValue) (LValue, error) {
+	f1, err := convToLNumber(v1)
 	if err != nil {
 		return nil, err
 	}
-	f2, err := v.convToLNumber(v2)
+	f2, err := convToLNumber(v2)
 	if err != nil {
 		return nil, err
 	}

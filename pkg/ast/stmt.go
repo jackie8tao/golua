@@ -1,50 +1,50 @@
 package ast
 
-// chunk -> { stat [”;] }
+// Chunk chunk -> { stat [”;] }
 type Chunk struct {
 	Stmts []Stmt
 }
 
-// block -> chunk
+// Block block -> chunk
 type Block struct {
 	Chunk *Chunk
 }
 
-// stmt -> varlist1 '=' explist1
+// AssignStmt stmt -> varlist1 '=' explist1
 type AssignStmt struct {
 	BaseStmt
 	LHS []Expr
 	RHS []Expr
 }
 
-// 'local' namelist [init]
+// LocalAssignStmt 'local' namelist [init]
 type LocalAssignStmt struct {
 	BaseStmt
 	Names []string
 	Exprs []Expr
 }
 
-// 'do' block 'end'
+// DoStmt 'do' block 'end'
 type DoStmt struct {
 	BaseStmt
 	Block *Block
 }
 
-// 'while' exp 'do' block 'end'
+// WhileStmt 'while' exp 'do' block 'end'
 type WhileStmt struct {
 	BaseStmt
 	Cond  Expr
 	Block *Block
 }
 
-// 'repeat' block 'until' exp
+// RepeatStmt 'repeat' block 'until' exp
 type RepeatStmt struct {
 	BaseStmt
 	Cond  Expr
 	Block *Block
 }
 
-// 'if' exp 'then' block { elseif exp 'then' block } ['else' block]
+// IfStmt 'if' exp 'then' block { elseif exp 'then' block } ['else' block]
 type IfStmt struct {
 	BaseStmt
 	Cond   Expr
@@ -58,18 +58,18 @@ type ElseIfSeg struct {
 	Then *Block
 }
 
-// 'return' [explist]
+// ReturnStmt 'return' [explist]
 type ReturnStmt struct {
 	BaseStmt
 	Exprs []Expr
 }
 
-// 'break'
+// BreakStmt 'break'
 type BreakStmt struct {
 	BaseStmt
 }
 
-// 'for' Name '=' exp ',' exp [',' exp] 'do' block 'end'
+// NumericForStmt 'for' Name '=' exp ',' exp [',' exp] 'do' block 'end'
 type NumericForStmt struct {
 	BaseStmt
 	VarName  string
@@ -79,7 +79,7 @@ type NumericForStmt struct {
 	Block    *Block
 }
 
-// 'for' Name {',' Name} 'in' explist 'do' block 'end'
+// GenericForStmt 'for' Name {',' Name} 'in' explist 'do' block 'end'
 type GenericForStmt struct {
 	BaseStmt
 	Names []string
@@ -87,7 +87,7 @@ type GenericForStmt struct {
 	Block *Block
 }
 
-// 'function' funcname funcbody
+// FuncDefStmt 'function' funcname funcbody
 type FuncDefStmt struct {
 	BaseStmt
 	IsLocal    bool // local function definition
@@ -98,7 +98,7 @@ type FuncDefStmt struct {
 	Block      *Block
 }
 
-// functioncall
+// FuncCallStmt functioncall
 type FuncCallStmt struct {
 	BaseStmt
 	Expr Expr

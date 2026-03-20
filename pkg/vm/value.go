@@ -128,6 +128,7 @@ func (l *LUserData) Type() LValueType {
 }
 
 type LFunction struct {
+	Fn *FuncProto
 }
 
 func (l *LFunction) String() string {

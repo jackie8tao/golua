@@ -17,3 +17,11 @@ func NewFuncProto() *FuncProto {
 		maxLocals: 0,
 	}
 }
+
+type CallFrame struct {
+	fn     *FuncProto
+	parent *CallFrame
+	bp     uint
+	sp     uint
+	pc     uint
+}
