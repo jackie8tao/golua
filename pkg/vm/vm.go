@@ -51,8 +51,7 @@ func (v *Vm) Execute() error {
 			fmt.Println(val.String())
 			v.curFrame.fn.pc++
 		case OpConstant:
-			args := v.fnOpArg(2)
-			idx := convToUint16([2]uint8{args[0], args[1]})
+			idx := v.fnOpIdxArg()
 			val, err := v.getFnConstant(idx)
 			if err != nil {
 				return err
@@ -73,8 +72,7 @@ func (v *Vm) Execute() error {
 			v.stPush(res)
 			v.curFrame.fn.pc++
 		case OpGetGlobal:
-			args := v.fnOpArg(2)
-			idx := convToUint16([2]uint8{args[0], args[1]})
+			idx := v.fnOpIdxArg()
 			key, err := v.getFnConstant(idx)
 			if err != nil {
 				return err
@@ -89,8 +87,7 @@ func (v *Vm) Execute() error {
 			v.stPush(val)
 			v.curFrame.fn.pc++
 		case OpSetGlobal:
-			args := v.fnOpArg(2)
-			idx := convToUint16([2]uint8{args[0], args[1]})
+			idx := v.fnOpIdxArg()
 			key, err := v.getFnConstant(idx)
 			if err != nil {
 				return err
@@ -102,14 +99,12 @@ func (v *Vm) Execute() error {
 			v.curFrame.fn.globals[key.(*LString).Value] = val
 			v.curFrame.fn.pc++
 		case OpSetLocal:
-			args := v.fnOpArg(2)
-			idx := convToUint16([2]uint8{args[0], args[1]})
+			idx := v.fnOpIdxArg()
 			val := v.stPop()
 			v.stack[v.bp+uint(idx)] = val
 			v.curFrame.fn.pc++
 		case OpGetLocal:
-			args := v.fnOpArg(2)
-			idx := convToUint16([2]uint8{args[0], args[1]})
+			idx := v.fnOpIdxArg()
 			val := v.stack[v.bp+uint(idx)]
 			v.stPush(val)
 			v.curFrame.fn.pc++
@@ -130,7 +125,6 @@ func (v *Vm) Execute() error {
 			v.bp = newBp
 			v.sp = newBp + uint(newCallFrame.fn.maxLocals)
 			v.curFrame = newCallFrame
-			v.curFrame.fn.pc++
 		case OpReturn:
 			retVal := v.stPop()
 			v.sp = v.curFrame.bp - 1

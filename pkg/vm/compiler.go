@@ -49,6 +49,32 @@ func (c *Compiler) visit(fp *FuncProto, node ast.Node) error {
 				return err
 			}
 		}
+	case *ast.Block:
+		if err := c.visit(fp, n.Chunk); err != nil {
+			return err
+		}
+	case *ast.NumExpr:
+		idx := convToUint8(c.writeConstant(fp, &LNumber{Value: n.Value}))
+		c.writeCode(fp, OpConstant, idx[0], idx[1])
+	case *ast.IdentExpr:
+		if idx, found := c.getLocal(n.Name); found {
+			c.writeCode(fp, OpGetLocal, convToUint8(idx)...)
+		} else {
+			idx := c.writeConstant(fp, &LString{Value: n.Name})
+			c.writeCode(fp, OpGetGlobal, convToUint8(idx)...)
+		}
+	case *ast.BinOpExpr:
+		if err := c.visit(fp, n.LHS); err != nil {
+			return err
+		}
+		if err := c.visit(fp, n.RHS); err != nil {
+			return err
+		}
+		if code, ok := c.binOpTable[n.Op]; !ok {
+			return fmt.Errorf("invalid binary operator")
+		} else {
+			c.writeCode(fp, code)
+		}
 	case *ast.LocalAssignStmt:
 		for i := 0; i < len(n.Exprs); i++ {
 			if err := c.visit(fp, n.Exprs[i]); err != nil {
@@ -74,39 +100,56 @@ func (c *Compiler) visit(fp *FuncProto, node ast.Node) error {
 				if idx, found := c.getLocal(l.Name); found {
 					c.writeCode(fp, OpSetLocal, convToUint8(idx)...)
 				} else {
-					idx := convToUint8(c.setConstant(fp, &LString{Value: l.Name}))
+					idx := convToUint8(c.writeConstant(fp, &LString{Value: l.Name}))
 					c.writeCode(fp, OpSetGlobal, idx...)
 				}
 			default:
 				return fmt.Errorf("invalid assignment target")
 			}
 		}
-	case *ast.BinOpExpr:
-		if err := c.visit(fp, n.LHS); err != nil {
+	case *ast.FuncDefStmt:
+		subCp := NewCompiler()
+		for i := 0; i < len(n.Params); i++ {
+			subCp.locals = append(subCp.locals, LocalVar{
+				Name:  n.Params[i],
+				Depth: 0,
+			})
+		}
+		subFp, err := subCp.Compile(n.Block)
+		if err != nil {
 			return err
 		}
-		if err := c.visit(fp, n.RHS); err != nil {
+		c.writeCode(subFp, OpReturn, convToUint8(0)...)
+		fn := &LFunction{Fn: subFp}
+		c.writeGlobal(fp, n.Names[0], fn)
+		_ = c.writeConstant(fp, &LString{Value: n.Names[0]})
+	case *ast.FuncCallStmt:
+		if err := c.visit(fp, n.Expr); err != nil {
 			return err
 		}
-		if code, ok := c.binOpTable[n.Op]; !ok {
-			return fmt.Errorf("invalid binary operator")
-		} else {
-			c.writeCode(fp, code)
+	case *ast.FuncCallExpr:
+		if err := c.visit(fp, n.Func); err != nil {
+			return err
 		}
-	case *ast.NumExpr:
-		idx := convToUint8(c.setConstant(fp, &LNumber{Value: n.Value}))
-		c.writeCode(fp, OpConstant, idx[0], idx[1])
-	case *ast.IdentExpr:
-		if idx, found := c.getLocal(n.Name); found {
-			c.writeCode(fp, OpGetLocal, convToUint8(idx)...)
-		} else {
-			idx := c.setConstant(fp, &LString{Value: n.Name})
-			c.writeCode(fp, OpGetGlobal, convToUint8(idx)...)
+		for i := 0; i < len(n.Args); i++ {
+			if err := c.visit(fp, n.Args[i]); err != nil {
+				return err
+			}
 		}
+		numArgs := uint16(len(n.Args))
+		c.writeCode(fp, OpCall, convToUint8(numArgs)...)
 	default:
 		return fmt.Errorf("invalid ast node")
 	}
 	return nil
+}
+
+func (c *Compiler) enterBlock() {
+	c.depth++
+}
+
+func (c *Compiler) leaveBlock() {
+	c.depth--
 }
 
 func (c *Compiler) setLocal(name string) uint16 {
@@ -137,23 +180,31 @@ func (c *Compiler) writeCode(fn *FuncProto, code uint8, operands ...uint8) {
 	}
 }
 
+func (c *Compiler) writeGlobal(fn *FuncProto, name string, val LValue) {
+	fn.globals[name] = val
+}
+
 // used for compiler to write constant
-func (c *Compiler) setConstant(fn *FuncProto, val LValue) uint16 {
+func (c *Compiler) writeConstant(fn *FuncProto, val LValue) uint16 {
+	isEqual := func(v1, v2 LValue) bool {
+		if v1.Type() != v2.Type() {
+			return false
+		}
+		switch tmp := v1.(type) {
+		case *LNumber:
+			return tmp.Value == v2.(*LNumber).Value
+		case *LString:
+			return tmp.Value == v2.(*LString).Value
+		default:
+			return false
+		}
+	}
+
 	for i := 0; i < len(fn.constants); i++ {
-		if fn.constants[i].Type() != val.Type() {
+		if !isEqual(fn.constants[i], val) {
 			continue
 		}
-		switch l := fn.constants[i].(type) {
-		case *LNumber:
-			if l.Value == val.(*LNumber).Value {
-				return uint16(i)
-			}
-		case *LString:
-			if l.Value == val.(*LString).Value {
-				return uint16(i)
-			}
-		default:
-		}
+		return uint16(i)
 	}
 	fn.constants = append(fn.constants, val)
 	return uint16(len(fn.constants) - 1)
@@ -168,7 +219,8 @@ func (c *Compiler) Disassemble(fp *FuncProto) error {
 		case OpAdd, OpSub, OpMul, OpDiv, OpPow:
 			fmt.Printf("%s\n", opCodeNames[fp.codes[fp.pc]])
 			fp.pc++
-		case OpConstant, OpGetGlobal, OpSetGlobal, OpGetLocal, OpSetLocal:
+		case OpConstant, OpGetGlobal, OpSetGlobal, OpGetLocal, OpSetLocal,
+			OpCall, OpReturn:
 			name := opCodeNames[fp.codes[fp.pc]]
 			args := make([]uint8, 0)
 			for i := 0; i < 2; i++ {
@@ -181,6 +233,24 @@ func (c *Compiler) Disassemble(fp *FuncProto) error {
 		default:
 			return fmt.Errorf("invalid opcode")
 		}
+	}
+
+	fmt.Printf("\nconstants:\n")
+	for i := 0; i < len(fp.constants); i++ {
+		fmt.Println(fp.constants[i].String())
+	}
+
+	fmt.Printf("\nglobals:\n")
+	for key, val := range fp.globals {
+		if val.Type() == LTFunction {
+			fmt.Printf("function %s:\n", key)
+			err := c.Disassemble(val.(*LFunction).Fn)
+			if err != nil {
+				return err
+			}
+			continue
+		}
+		fmt.Printf("%s => %s", key, val.String())
 	}
 
 	return nil
