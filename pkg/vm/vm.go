@@ -17,12 +17,19 @@ type Vm struct {
 	curFrame *CallFrame
 }
 
-var binaryOpTable = map[uint8]binaryOpHandler{
-	OpAdd: opAdd,
-	OpSub: opSub,
-	OpMul: opMul,
-	OpDiv: opDiv,
-	OpPow: opPow,
+var opTable = map[uint8]func(v *Vm) error{
+	OpAdd:       opArithmetic,
+	OpSub:       opArithmetic,
+	OpMul:       opArithmetic,
+	OpDiv:       opArithmetic,
+	OpPow:       opArithmetic,
+	OpSetLocal:  opSetLocal,
+	OpGetLocal:  opGetLocal,
+	OpConstant:  opConstant,
+	OpSetGlobal: opSetGlobal,
+	OpGetGlobal: opGetGlobal,
+	OpCall:      opCall,
+	OpReturn:    opReturn,
 }
 
 func NewVm(funcProto *FuncProto) *Vm {
@@ -75,112 +82,13 @@ func (v *Vm) Execute() error {
 		if v.curFrame.fn.pc >= len(v.curFrame.fn.codes) {
 			break
 		}
-		switch v.curFrame.fn.codes[v.curFrame.fn.pc] {
-		case OpPrint: // only used for debugging
-			val := v.StPop()
-			fmt.Println(val.String())
-			v.curFrame.fn.pc++
-		case OpConstant:
-			idx := v.fnOpIdxArg()
-			val, err := v.getFnConstant(idx)
-			if err != nil {
-				return err
-			}
-			v.StPush(val)
-			v.curFrame.fn.pc++
-		case OpAdd, OpSub, OpMul, OpDiv, OpPow:
-			handler, ok := binaryOpTable[v.curFrame.fn.codes[v.curFrame.fn.pc]]
-			if !ok {
-				return fmt.Errorf("cannot find binary operator handler")
-			}
-			v1 := v.StPop()
-			v2 := v.StPop()
-			res, err := handler(v1, v2)
-			if err != nil {
-				return err
-			}
-			v.StPush(res)
-			v.curFrame.fn.pc++
-		case OpGetGlobal:
-			idx := v.fnOpIdxArg()
-			key, err := v.getFnConstant(idx)
-			if err != nil {
-				return err
-			}
-			if key.Type() != LTString {
-				return fmt.Errorf("invalid global name type")
-			}
-			lKey := key.(*LString)
-			val, ok := v.curFrame.fn.globals[lKey.Value]
-			if !ok {
-				val, ok = v.funcs[lKey.Value]
-				if !ok {
-					return fmt.Errorf("cannot find global value: %s", lKey.Value)
-				}
-			}
-			v.StPush(val)
-			v.curFrame.fn.pc++
-		case OpSetGlobal:
-			idx := v.fnOpIdxArg()
-			key, err := v.getFnConstant(idx)
-			if err != nil {
-				return err
-			}
-			if key.Type() != LTString {
-				return fmt.Errorf("invalid global name type")
-			}
-			val := v.StPop()
-			v.curFrame.fn.globals[key.(*LString).Value] = val
-			v.curFrame.fn.pc++
-		case OpSetLocal:
-			idx := v.fnOpIdxArg()
-			val := v.StPop()
-			v.stack[v.bp+uint(idx)] = val
-			v.curFrame.fn.pc++
-		case OpGetLocal:
-			idx := v.fnOpIdxArg()
-			val := v.stack[v.bp+uint(idx)]
-			v.StPush(val)
-			v.curFrame.fn.pc++
-		case OpCall:
-			argCount := v.fnOpIdxArg()
-			fn := v.stack[(v.bp+v.sp)-uint(argCount)-1]
-			switch callee := fn.(type) {
-			case *LFunction:
-				newBp := v.sp - uint(argCount)
-				v.curFrame.bp = v.bp
-				newCallFrame := &CallFrame{
-					fn:     callee.Fn,
-					parent: v.curFrame,
-					bp:     newBp,
-					pc:     0,
-				}
-				v.bp = newBp
-				v.sp = newBp + uint(newCallFrame.fn.maxLocals)
-				v.curFrame = newCallFrame
-			case LGFunction:
-				retCount := uint(callee(v, int(argCount)))
-				baseIdx := (v.bp + v.sp) - retCount - 1
-				for i := uint(0); i < retCount; i++ {
-					v.stack[baseIdx+i] = v.stack[baseIdx+i+1]
-				}
-				v.sp--
-				v.curFrame.fn.pc++
-			default:
-				return fmt.Errorf("invalid function type")
-			}
-		case OpReturn:
-			retVal := v.StPop()
-			v.sp = v.curFrame.bp - 1
-			v.curFrame = v.curFrame.parent
-			if v.curFrame == nil {
-				return nil
-			}
-			v.bp = v.curFrame.bp
-			v.StPush(retVal)
-			v.curFrame.fn.pc++
-		default:
-			panic("invalid opcode")
+		handler, ok := opTable[v.curFrame.fn.codes[v.curFrame.fn.pc]]
+		if !ok {
+			return fmt.Errorf("not support opcode")
+		}
+		err := handler(v)
+		if err != nil {
+			return err
 		}
 	}
 	return nil
@@ -207,6 +115,136 @@ func (v *Vm) getFnConstant(idx uint16) (LValue, error) {
 		return nil, fmt.Errorf("constant index overflow")
 	}
 	return v.curFrame.fn.constants[idx], nil
+}
+
+func opConstant(v *Vm) error {
+	idx := v.fnOpIdxArg()
+	val, err := v.getFnConstant(idx)
+	if err != nil {
+		return err
+	}
+	v.StPush(val)
+	v.curFrame.fn.pc++
+	return nil
+}
+
+func opArithmetic(v *Vm) error {
+	var binaryOpTable = map[uint8]binaryOpHandler{
+		OpAdd: opAdd,
+		OpSub: opSub,
+		OpMul: opMul,
+		OpDiv: opDiv,
+		OpPow: opPow,
+	}
+	handler, ok := binaryOpTable[v.curFrame.fn.codes[v.curFrame.fn.pc]]
+	if !ok {
+		return fmt.Errorf("cannot find binary operator handler")
+	}
+	v1 := v.StPop()
+	v2 := v.StPop()
+	res, err := handler(v1, v2)
+	if err != nil {
+		return err
+	}
+	v.StPush(res)
+	v.curFrame.fn.pc++
+	return nil
+}
+
+func opGetGlobal(v *Vm) error {
+	idx := v.fnOpIdxArg()
+	key, err := v.getFnConstant(idx)
+	if err != nil {
+		return err
+	}
+	if key.Type() != LTString {
+		return fmt.Errorf("invalid global name type")
+	}
+	lKey := key.(*LString)
+	val, ok := v.curFrame.fn.globals[lKey.Value]
+	if !ok {
+		val, ok = v.funcs[lKey.Value]
+		if !ok {
+			return fmt.Errorf("cannot find global value: %s", lKey.Value)
+		}
+	}
+	v.StPush(val)
+	v.curFrame.fn.pc++
+	return nil
+}
+
+func opSetGlobal(v *Vm) error {
+	idx := v.fnOpIdxArg()
+	key, err := v.getFnConstant(idx)
+	if err != nil {
+		return err
+	}
+	if key.Type() != LTString {
+		return fmt.Errorf("invalid global name type")
+	}
+	val := v.StPop()
+	v.curFrame.fn.globals[key.(*LString).Value] = val
+	v.curFrame.fn.pc++
+	return nil
+}
+
+func opSetLocal(v *Vm) error {
+	idx := v.fnOpIdxArg()
+	val := v.StPop()
+	v.stack[v.bp+uint(idx)] = val
+	v.curFrame.fn.pc++
+	return nil
+}
+
+func opGetLocal(v *Vm) error {
+	idx := v.fnOpIdxArg()
+	val := v.stack[v.bp+uint(idx)]
+	v.StPush(val)
+	v.curFrame.fn.pc++
+	return nil
+}
+
+func opCall(v *Vm) error {
+	argCount := v.fnOpIdxArg()
+	fn := v.stack[(v.bp+v.sp)-uint(argCount)-1]
+	switch callee := fn.(type) {
+	case *LFunction:
+		newBp := v.sp - uint(argCount)
+		v.curFrame.bp = v.bp
+		newCallFrame := &CallFrame{
+			fn:     callee.Fn,
+			parent: v.curFrame,
+			bp:     newBp,
+			pc:     0,
+		}
+		v.bp = newBp
+		v.sp = newBp + uint(newCallFrame.fn.maxLocals)
+		v.curFrame = newCallFrame
+	case LGFunction:
+		retCount := uint(callee(v, int(argCount)))
+		baseIdx := (v.bp + v.sp) - retCount - 1
+		for i := uint(0); i < retCount; i++ {
+			v.stack[baseIdx+i] = v.stack[baseIdx+i+1]
+		}
+		v.sp--
+		v.curFrame.fn.pc++
+	default:
+		return fmt.Errorf("invalid function type")
+	}
+	return nil
+}
+
+func opReturn(v *Vm) error {
+	retVal := v.StPop()
+	v.sp = v.curFrame.bp - 1
+	v.curFrame = v.curFrame.parent
+	if v.curFrame == nil {
+		return nil
+	}
+	v.bp = v.curFrame.bp
+	v.StPush(retVal)
+	v.curFrame.fn.pc++
+	return nil
 }
 
 func opAdd(v1, v2 LValue) (LValue, error) {
