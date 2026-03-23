@@ -13,6 +13,7 @@ type Vm struct {
 	stack    []LValue
 	bp       uint // stack bp
 	sp       uint // stack sp
+	funcs    map[string]LGFunction
 	curFrame *CallFrame
 }
 
@@ -29,6 +30,7 @@ func NewVm(funcProto *FuncProto) *Vm {
 		stack: make([]LValue, defaultStackSize),
 		bp:    0,
 		sp:    uint(funcProto.maxLocals),
+		funcs: make(map[string]LGFunction),
 		curFrame: &CallFrame{
 			fn:     funcProto,
 			parent: nil,
@@ -40,6 +42,34 @@ func NewVm(funcProto *FuncProto) *Vm {
 	return vm
 }
 
+func (v *Vm) RegisterModule(module string, funcs map[string]LGFunction) {
+	for name, fn := range funcs {
+		v.funcs[name] = fn
+	}
+}
+
+func (v *Vm) StPop() LValue {
+	v.sp--
+	idx := v.bp + v.sp
+	if int(idx) < 0 {
+		panic("stack underflow")
+	}
+	val := v.stack[idx]
+	v.stack[idx] = nil
+	return val
+}
+
+func (v *Vm) StPush(val LValue) {
+	idx := v.bp + v.sp
+	if int(idx) >= len(v.stack) {
+		stack := make([]LValue, 2*len(v.stack))
+		copy(stack, v.stack)
+		v.stack = stack
+	}
+	v.stack[idx] = val
+	v.sp++
+}
+
 func (v *Vm) Execute() error {
 	for {
 		if v.curFrame.fn.pc >= len(v.curFrame.fn.codes) {
@@ -47,7 +77,7 @@ func (v *Vm) Execute() error {
 		}
 		switch v.curFrame.fn.codes[v.curFrame.fn.pc] {
 		case OpPrint: // only used for debugging
-			val := v.stPop()
+			val := v.StPop()
 			fmt.Println(val.String())
 			v.curFrame.fn.pc++
 		case OpConstant:
@@ -56,20 +86,20 @@ func (v *Vm) Execute() error {
 			if err != nil {
 				return err
 			}
-			v.stPush(val)
+			v.StPush(val)
 			v.curFrame.fn.pc++
 		case OpAdd, OpSub, OpMul, OpDiv, OpPow:
 			handler, ok := binaryOpTable[v.curFrame.fn.codes[v.curFrame.fn.pc]]
 			if !ok {
 				return fmt.Errorf("cannot find binary operator handler")
 			}
-			v1 := v.stPop()
-			v2 := v.stPop()
+			v1 := v.StPop()
+			v2 := v.StPop()
 			res, err := handler(v1, v2)
 			if err != nil {
 				return err
 			}
-			v.stPush(res)
+			v.StPush(res)
 			v.curFrame.fn.pc++
 		case OpGetGlobal:
 			idx := v.fnOpIdxArg()
@@ -80,11 +110,15 @@ func (v *Vm) Execute() error {
 			if key.Type() != LTString {
 				return fmt.Errorf("invalid global name type")
 			}
-			val, ok := v.curFrame.fn.globals[key.(*LString).Value]
+			lKey := key.(*LString)
+			val, ok := v.curFrame.fn.globals[lKey.Value]
 			if !ok {
-				return fmt.Errorf("cannot find global value")
+				val, ok = v.funcs[lKey.Value]
+				if !ok {
+					return fmt.Errorf("cannot find global value: %s", lKey.Value)
+				}
 			}
-			v.stPush(val)
+			v.StPush(val)
 			v.curFrame.fn.pc++
 		case OpSetGlobal:
 			idx := v.fnOpIdxArg()
@@ -95,45 +129,55 @@ func (v *Vm) Execute() error {
 			if key.Type() != LTString {
 				return fmt.Errorf("invalid global name type")
 			}
-			val := v.stPop()
+			val := v.StPop()
 			v.curFrame.fn.globals[key.(*LString).Value] = val
 			v.curFrame.fn.pc++
 		case OpSetLocal:
 			idx := v.fnOpIdxArg()
-			val := v.stPop()
+			val := v.StPop()
 			v.stack[v.bp+uint(idx)] = val
 			v.curFrame.fn.pc++
 		case OpGetLocal:
 			idx := v.fnOpIdxArg()
 			val := v.stack[v.bp+uint(idx)]
-			v.stPush(val)
+			v.StPush(val)
 			v.curFrame.fn.pc++
 		case OpCall:
 			argCount := v.fnOpIdxArg()
-			fn := v.stack[v.bp+uint(argCount)-1]
-			if fn.Type() != LTFunction {
+			fn := v.stack[(v.bp+v.sp)-uint(argCount)-1]
+			switch callee := fn.(type) {
+			case *LFunction:
+				newBp := v.sp - uint(argCount)
+				v.curFrame.bp = v.bp
+				newCallFrame := &CallFrame{
+					fn:     callee.Fn,
+					parent: v.curFrame,
+					bp:     newBp,
+					pc:     0,
+				}
+				v.bp = newBp
+				v.sp = newBp + uint(newCallFrame.fn.maxLocals)
+				v.curFrame = newCallFrame
+			case LGFunction:
+				retCount := uint(callee(v, int(argCount)))
+				baseIdx := (v.bp + v.sp) - retCount - 1
+				for i := uint(0); i < retCount; i++ {
+					v.stack[baseIdx+i] = v.stack[baseIdx+i+1]
+				}
+				v.sp--
+				v.curFrame.fn.pc++
+			default:
 				return fmt.Errorf("invalid function type")
 			}
-			newBp := v.sp - uint(argCount)
-			v.curFrame.bp = v.bp
-			newCallFrame := &CallFrame{
-				fn:     fn.(*LFunction).Fn,
-				parent: v.curFrame,
-				bp:     newBp,
-				pc:     0,
-			}
-			v.bp = newBp
-			v.sp = newBp + uint(newCallFrame.fn.maxLocals)
-			v.curFrame = newCallFrame
 		case OpReturn:
-			retVal := v.stPop()
+			retVal := v.StPop()
 			v.sp = v.curFrame.bp - 1
 			v.curFrame = v.curFrame.parent
 			if v.curFrame == nil {
 				return nil
 			}
 			v.bp = v.curFrame.bp
-			v.stPush(retVal)
+			v.StPush(retVal)
 			v.curFrame.fn.pc++
 		default:
 			panic("invalid opcode")
@@ -163,28 +207,6 @@ func (v *Vm) getFnConstant(idx uint16) (LValue, error) {
 		return nil, fmt.Errorf("constant index overflow")
 	}
 	return v.curFrame.fn.constants[idx], nil
-}
-
-func (v *Vm) stPop() LValue {
-	v.sp--
-	idx := v.bp + v.sp
-	if int(idx) < 0 {
-		panic("stack underflow")
-	}
-	val := v.stack[idx]
-	v.stack[idx] = nil
-	return val
-}
-
-func (v *Vm) stPush(val LValue) {
-	idx := v.bp + v.sp
-	if int(idx) >= len(v.stack) {
-		stack := make([]LValue, 2*len(v.stack))
-		copy(stack, v.stack)
-		v.stack = stack
-	}
-	v.stack[idx] = val
-	v.sp++
 }
 
 func opAdd(v1, v2 LValue) (LValue, error) {

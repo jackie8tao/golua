@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 
 	"github.com/jackie8tao/golua/pkg/lexer"
+	"github.com/jackie8tao/golua/pkg/libs"
 	"github.com/jackie8tao/golua/pkg/parser"
 	"github.com/jackie8tao/golua/pkg/vm"
 )
@@ -56,6 +57,7 @@ func executeLua(path string) error {
 	//	return err
 	//}
 	v := vm.NewVm(funcProto)
+	libs.SetupBasicLib(v)
 	err = v.Execute()
 	if err != nil {
 		return err

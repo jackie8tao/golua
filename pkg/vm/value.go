@@ -127,6 +127,16 @@ func (l *LUserData) Type() LValueType {
 	return LTUserData
 }
 
+type LGFunction func(vm *Vm, argc int) int
+
+func (l LGFunction) String() string {
+	return fmt.Sprintf("function: %p", l)
+}
+
+func (l LGFunction) Type() LValueType {
+	return LTFunction
+}
+
 type LFunction struct {
 	Fn *FuncProto
 }
