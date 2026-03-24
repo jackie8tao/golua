@@ -129,24 +129,49 @@ func opConstant(v *Vm) error {
 }
 
 func opArithmetic(v *Vm) error {
-	var binaryOpTable = map[uint8]binaryOpHandler{
-		OpAdd: opAdd,
-		OpSub: opSub,
-		OpMul: opMul,
-		OpDiv: opDiv,
-		OpPow: opPow,
-	}
-	handler, ok := binaryOpTable[v.curFrame.fn.codes[v.curFrame.fn.pc]]
-	if !ok {
-		return fmt.Errorf("cannot find binary operator handler")
-	}
 	v1 := v.StPop()
-	v2 := v.StPop()
-	res, err := handler(v1, v2)
+	f1, err := convToLNumber(v1)
 	if err != nil {
 		return err
 	}
+
+	v2 := v.StPop()
+	f2, err := convToLNumber(v2)
+	if err != nil {
+		return err
+	}
+	var res LValue
+	switch v.curFrame.fn.codes[v.curFrame.fn.pc] {
+	case OpAdd:
+		res = &LNumber{Value: f1.Value + f2.Value}
+	case OpSub:
+		res = &LNumber{Value: f1.Value - f2.Value}
+	case OpDiv:
+		res = &LNumber{Value: f1.Value / f2.Value}
+	case OpMul:
+		res = &LNumber{Value: f1.Value * f2.Value}
+	case OpPow:
+		res = &LNumber{Value: math.Pow(f1.Value, f2.Value)}
+	default:
+		return fmt.Errorf("invalid arithmetic operator")
+	}
 	v.StPush(res)
+	v.curFrame.fn.pc++
+	return nil
+}
+
+func opSetLocal(v *Vm) error {
+	idx := v.fnOpIdxArg()
+	val := v.StPop()
+	v.stack[v.bp+uint(idx)] = val
+	v.curFrame.fn.pc++
+	return nil
+}
+
+func opGetLocal(v *Vm) error {
+	idx := v.fnOpIdxArg()
+	val := v.stack[v.bp+uint(idx)]
+	v.StPush(val)
 	v.curFrame.fn.pc++
 	return nil
 }
@@ -184,22 +209,6 @@ func opSetGlobal(v *Vm) error {
 	}
 	val := v.StPop()
 	v.curFrame.fn.globals[key.(*LString).Value] = val
-	v.curFrame.fn.pc++
-	return nil
-}
-
-func opSetLocal(v *Vm) error {
-	idx := v.fnOpIdxArg()
-	val := v.StPop()
-	v.stack[v.bp+uint(idx)] = val
-	v.curFrame.fn.pc++
-	return nil
-}
-
-func opGetLocal(v *Vm) error {
-	idx := v.fnOpIdxArg()
-	val := v.stack[v.bp+uint(idx)]
-	v.StPush(val)
 	v.curFrame.fn.pc++
 	return nil
 }
@@ -245,74 +254,4 @@ func opReturn(v *Vm) error {
 	v.StPush(retVal)
 	v.curFrame.fn.pc++
 	return nil
-}
-
-func opAdd(v1, v2 LValue) (LValue, error) {
-	f1, err := convToLNumber(v1)
-	if err != nil {
-		return nil, err
-	}
-	f2, err := convToLNumber(v2)
-	if err != nil {
-		return nil, err
-	}
-	return &LNumber{
-		Value: f1.Value + f2.Value,
-	}, nil
-}
-
-func opSub(v1, v2 LValue) (LValue, error) {
-	f1, err := convToLNumber(v1)
-	if err != nil {
-		return nil, err
-	}
-	f2, err := convToLNumber(v2)
-	if err != nil {
-		return nil, err
-	}
-	return &LNumber{
-		Value: f1.Value - f2.Value,
-	}, nil
-}
-
-func opMul(v1, v2 LValue) (LValue, error) {
-	f1, err := convToLNumber(v1)
-	if err != nil {
-		return nil, err
-	}
-	f2, err := convToLNumber(v2)
-	if err != nil {
-		return nil, err
-	}
-	return &LNumber{
-		Value: f1.Value * f2.Value,
-	}, nil
-}
-
-func opDiv(v1, v2 LValue) (LValue, error) {
-	f1, err := convToLNumber(v1)
-	if err != nil {
-		return nil, err
-	}
-	f2, err := convToLNumber(v2)
-	if err != nil {
-		return nil, err
-	}
-	return &LNumber{
-		Value: f1.Value / f2.Value,
-	}, nil
-}
-
-func opPow(v1, v2 LValue) (LValue, error) {
-	f1, err := convToLNumber(v1)
-	if err != nil {
-		return nil, err
-	}
-	f2, err := convToLNumber(v2)
-	if err != nil {
-		return nil, err
-	}
-	return &LNumber{
-		Value: math.Pow(f1.Value, f2.Value),
-	}, nil
 }

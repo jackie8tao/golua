@@ -172,7 +172,6 @@ func (c *Compiler) getLocal(name string) (uint16, bool) {
 	return 0, false
 }
 
-// used for compiler to write code to function instruction list
 func (c *Compiler) writeCode(fn *FuncProto, code uint8, operands ...uint8) {
 	fn.codes = append(fn.codes, code)
 	for _, op := range operands {
@@ -184,7 +183,6 @@ func (c *Compiler) writeGlobal(fn *FuncProto, name string, val LValue) {
 	fn.globals[name] = val
 }
 
-// used for compiler to write constant
 func (c *Compiler) writeConstant(fn *FuncProto, val LValue) uint16 {
 	isEqual := func(v1, v2 LValue) bool {
 		if v1.Type() != v2.Type() {
